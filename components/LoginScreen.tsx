@@ -21,7 +21,8 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 
 		try {
 			await signInWithEmailAndPassword(auth, email, password);
-			Alert.alert('Success', 'Logged in successfully');
+			Alert.alert('Success', 'Login successful');
+			navigation.navigate('Main');
 		} catch (error: any) {
 			Alert.alert('Error', error.message);
 		}

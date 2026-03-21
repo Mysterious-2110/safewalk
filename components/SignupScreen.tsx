@@ -21,7 +21,8 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
 
 		try {
 			await createUserWithEmailAndPassword(auth, email, password);
-			Alert.alert('Success', 'Account created successfully');
+			Alert.alert('Success', 'Signup successful');
+			navigation.navigate('Main');
 		} catch (error: any) {
 			Alert.alert('Error', error.message);
 		}
