@@ -5,57 +5,60 @@ const twilio = require("twilio");
 
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Twilio client
 const client = twilio(
 	process.env.TWILIO_ACCOUNT_SID,
 	process.env.TWILIO_AUTH_TOKEN,
 );
 
-// SOS endpoint
 app.post("/send-sos", async (req, res) => {
 	console.log("[BACKEND] req.body:", JSON.stringify(req.body));
-	try {
-		const { lat, lng } = req.body;
-		console.log("[BACKEND] lat:", lat, "lng:", lng);
 
-		if (!lat || !lng) {
-			console.log("[BACKEND] Validation failed: Missing lat/lng");
-			return res
-				.status(400)
-				.json({ error: "Latitude and longitude are required" });
-		}
+	const { lat, lng, contacts } = req.body;
+	console.log("[BACKEND] lat:", lat, "lng:", lng, "contacts:", contacts);
 
-		// Generate Google Maps link
-		const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+	if (!lat || !lng) {
+		console.log("[BACKEND] Validation failed: Missing lat/lng");
+		return res.status(400).json({ error: "Latitude and longitude are required" });
+	}
 
-		// Create message
-		const message = `🚨 EMERGENCY SOS 🚨 I need help! Location: ${mapsLink}`;
+	if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+		console.log("[BACKEND] Validation failed: Empty contacts array");
+		return res.status(400).json({ error: "Contacts array is required and cannot be empty" });
+	}
 
+	const mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
+	const message = `🚨 EMERGENCY ALERT 🚨\nI need help!\n\nMy location:\n${mapsLink}`;
+
+	const results = [];
+	for (const phone of contacts) {
 		try {
-			console.log("[BACKEND] Triggering SMS to:", process.env.TO_PHONE_NUMBER);
+			console.log("[BACKEND] Sending SMS to:", phone);
 			const response = await client.messages.create({
 				body: message,
 				from: process.env.TWILIO_PHONE_NUMBER,
-				to: process.env.TO_PHONE_NUMBER,
+				to: phone,
 			});
-
-			console.log("[BACKEND] SMS sent successfully - SID:", response.sid);
-			return res.status(200).json({ success: true });
+			console.log("[BACKEND] SMS sent - SID:", response.sid);
+			results.push({ phone, success: true, sid: response.sid });
 		} catch (error) {
-			console.log("[BACKEND] SMS ERROR:", error.message || error);
-			return res.status(500).json({ success: false });
+			console.log("[BACKEND] SMS ERROR for", phone, ":", error.message || error);
+			results.push({ phone, success: false, error: error.message });
 		}
-	} catch (error) {
-		console.error("[BACKEND] Unexpected error:", error.message || error);
-		res.status(500).json({ error: "Failed to send SOS message" });
+	}
+
+	const allSuccessful = results.every((r) => r.success);
+	console.log("[BACKEND] Results:", JSON.stringify(results));
+
+	if (allSuccessful) {
+		return res.status(200).json({ success: true, results });
+	} else {
+		return res.status(207).json({ success: false, results });
 	}
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);

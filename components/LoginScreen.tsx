@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, StyleSheet, Text, TextInput, View } from 'react-native';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { colors, spacing, borderRadius } from '@/theme';
 
 interface LoginScreenProps {
 	navigation: {
@@ -34,6 +35,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 			<TextInput
 				style={styles.input}
 				placeholder="Email"
+				placeholderTextColor={colors.textSecondary}
 				value={email}
 				onChangeText={setEmail}
 				autoCapitalize="none"
@@ -42,11 +44,12 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 			<TextInput
 				style={styles.input}
 				placeholder="Password"
+				placeholderTextColor={colors.textSecondary}
 				value={password}
 				onChangeText={setPassword}
 				secureTextEntry
 			/>
-			<Button title="Login" onPress={handleLogin} />
+			<Button title="Login" onPress={handleLogin} color={colors.primary} />
 			<Text style={styles.link} onPress={() => navigation.navigate('Signup')}>
 				{"Don't have an account? Sign Up"}
 			</Text>
@@ -59,25 +62,30 @@ const styles = StyleSheet.create({
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
-		padding: 20,
-		backgroundColor: '#fff',
+		padding: spacing.lg,
+		backgroundColor: colors.background,
 	},
 	title: {
 		fontSize: 28,
 		fontWeight: 'bold',
-		marginBottom: 24,
+		color: colors.textPrimary,
+		marginBottom: spacing.lg,
 	},
 	input: {
 		width: '100%',
-		height: 48,
+		height: 52,
+		backgroundColor: colors.card,
 		borderWidth: 1,
-		borderColor: '#ccc',
-		borderRadius: 8,
-		paddingHorizontal: 12,
-		marginBottom: 16,
+		borderColor: colors.border,
+		borderRadius: borderRadius.md,
+		paddingHorizontal: spacing.md,
+		marginBottom: spacing.md,
+		color: colors.textPrimary,
+		fontSize: 16,
 	},
 	link: {
-		marginTop: 16,
-		color: '#007bff',
+		marginTop: spacing.lg,
+		color: colors.primary,
+		fontSize: 14,
 	},
 });
