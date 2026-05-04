@@ -16,7 +16,7 @@ const client = twilio(
 app.post("/send-sos", async (req, res) => {
 	console.log("[BACKEND] req.body:", JSON.stringify(req.body));
 
-	const { lat, lng, contacts } = req.body;
+	const { lat, lng, contacts, message } = req.body;
 	console.log("[BACKEND] lat:", lat, "lng:", lng, "contacts:", contacts);
 
 	if (!lat || !lng) {
@@ -30,14 +30,15 @@ app.post("/send-sos", async (req, res) => {
 	}
 
 	const mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
-	const message = `🚨 EMERGENCY ALERT 🚨\nI need help!\n\nMy location:\n${mapsLink}`;
+	const defaultMessage = `🚨 EMERGENCY ALERT 🚨\nI need help!\n\nMy location:\n${mapsLink}`;
+	const body = message || defaultMessage;
 
 	const results = [];
 	for (const phone of contacts) {
 		try {
 			console.log("[BACKEND] Sending SMS to:", phone);
 			const response = await client.messages.create({
-				body: message,
+				body: body,
 				from: process.env.TWILIO_PHONE_NUMBER,
 				to: phone,
 			});

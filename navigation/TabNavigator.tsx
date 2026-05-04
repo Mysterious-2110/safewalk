@@ -3,12 +3,14 @@ import { View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "@/components/HomeScreen";
 import { ContactsScreen } from "@/components/ContactsScreen";
+import { WalkScreen } from "@/components/WalkScreen";
 import { ProfileScreen } from "@/components/ProfileScreen";
 import { colors, borderRadius } from "@/theme";
 
 export type TabParamList = {
 	Home: undefined;
 	Contacts: undefined;
+	Walk: undefined;
 	Profile: undefined;
 };
 
@@ -60,6 +62,15 @@ export function TabNavigator() {
 				options={{
 					tabBarIcon: ({ focused }) => (
 						<TabIcon name={focused ? "people" : "people-outline"} focused={focused} />
+					),
+				}}
+			/>
+			<Tab.Screen
+				name="Walk"
+				component={WalkScreen}
+				options={{
+					tabBarIcon: ({ focused }) => (
+						<TabIcon name={focused ? "walk" : "walk-outline"} focused={focused} />
 					),
 				}}
 			/>
