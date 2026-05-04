@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
 import { Alert, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -12,6 +13,8 @@ interface Contact {
 	id: string;
 	name: string;
 	phone: string;
+	active: boolean;
+	notifyVia: "sms" | "whatsapp" | "both";
 }
 
 type StatusType = "safe" | "sent" | "error";
@@ -53,50 +56,72 @@ export function HomeScreen() {
 		setLongitude(loc.coords.longitude);
 
 		const stored = await AsyncStorage.getItem(STORAGE_KEY);
-		const contacts: Contact[] = stored ? JSON.parse(stored) : [];
-		const phoneNumbers = contacts.map((c) => c.phone);
+		const allContacts: Contact[] = stored ? JSON.parse(stored) : [];
+		const activeContacts = allContacts.filter((c) => c.active);
 
-		if (phoneNumbers.length === 0) {
+		if (activeContacts.length === 0) {
 			setLoading(false);
-			Alert.alert("No emergency contacts found");
+			Alert.alert("No active emergency contacts found");
 			return;
 		}
 
-		try {
-			const payload = {
-				lat: loc.coords.latitude,
-				lng: loc.coords.longitude,
-				contacts: phoneNumbers,
-			};
-			console.log("[FRONTEND] Before fetch - Request payload:", JSON.stringify(payload));
-			const response = await fetch("http://192.168.1.4:3000/send-sos", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-			});
+		const mapsLink = `https://maps.google.com/?q=${loc.coords.latitude},${loc.coords.longitude}`;
+		const message = `🚨 EMERGENCY ALERT 🚨\nI need help!\n\nMy location:\n${mapsLink}`;
 
-			console.log("[FRONTEND] Response status:", response.status);
-			const responseData = await response.json();
-			console.log("[FRONTEND] Response data:", JSON.stringify(responseData));
+		const smsContacts = activeContacts.filter((c) => !c.notifyVia || c.notifyVia === "sms" || c.notifyVia === "both");
+		const whatsappContacts = activeContacts.filter((c) => c.notifyVia === "whatsapp" || c.notifyVia === "both");
 
-			if (response.ok) {
-				await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-				setStatus("sent");
-				Alert.alert("Success", "SOS sent successfully");
-				setTimeout(() => setStatus("safe"), 3000);
-			} else {
-				await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-				setStatus("error");
-				Alert.alert("Error", `Failed to send SOS: ${response.status}`);
-				setTimeout(() => setStatus("safe"), 3000);
+		let smsSuccess = true;
+		if (smsContacts.length > 0) {
+			try {
+				const payload = {
+					lat: loc.coords.latitude,
+					lng: loc.coords.longitude,
+					contacts: smsContacts.map((c) => c.phone),
+				};
+				const response = await fetch("https://fizzier-lizeth-unfilially.ngrok-free.dev/send-sos", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload),
+				});
+
+				if (!response.ok) {
+					smsSuccess = false;
+					console.error("SMS backend error:", response.status);
+				}
+			} catch (error) {
+				smsSuccess = false;
+				console.error("SMS fetch error:", error);
 			}
-		} catch (error) {
-			setLoading(false);
-			console.log("[FRONTEND] Fetch error:", error);
-			Alert.alert("Error", "Failed to send SOS");
-		} finally {
-			setLoading(false);
 		}
+
+		for (const contact of whatsappContacts) {
+			const cleanPhone = contact.phone.replace(/[^0-9]/g, "");
+			const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+			await Linking.openURL(waUrl);
+		}
+
+		setLoading(false);
+
+		if (smsSuccess && whatsappContacts.length > 0) {
+			await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+			setStatus("sent");
+			Alert.alert("Success", "SOS alerts sent via SMS and WhatsApp");
+		} else if (smsSuccess) {
+			await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+			setStatus("sent");
+			Alert.alert("Success", "SOS sent successfully");
+		} else if (whatsappContacts.length > 0) {
+			await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+			setStatus("sent");
+			Alert.alert("Partial Success", "SMS failed but WhatsApp alerts opened");
+		} else {
+			await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+			setStatus("error");
+			Alert.alert("Error", "Failed to send SOS");
+		}
+
+		setTimeout(() => setStatus("safe"), 3000);
 	};
 
 	return (

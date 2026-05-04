@@ -19,6 +19,7 @@ interface Contact {
   phone: string;
   relationship: string;
   active: boolean;
+  notifyVia: "sms" | "whatsapp" | "both";
 }
 
 const STORAGE_KEY = "@sos_contacts";
@@ -31,12 +32,19 @@ const getInitials = (name: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
+const getNotifyLabel = (via: Contact["notifyVia"]) => {
+  if (via === "sms") return "📱 SMS";
+  if (via === "whatsapp") return "💬 WhatsApp";
+  return "📱💬 Both";
+};
+
 export function ContactsScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRelationship, setNewRelationship] = useState("");
+  const [newNotifyVia, setNewNotifyVia] = useState<Contact["notifyVia"]>("both");
 
   useEffect(() => {
     loadContacts();
@@ -46,7 +54,10 @@ export function ContactsScreen() {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(stored).map((c: Contact) => ({
+          ...c,
+          notifyVia: c.notifyVia || "sms",
+        }));
         setContacts(parsed.length > 0 ? parsed : []);
       }
     } catch (error) {
@@ -75,12 +86,14 @@ export function ContactsScreen() {
       phone: newPhone.trim(),
       relationship: newRelationship.trim() || "Contact",
       active: true,
+      notifyVia: newNotifyVia,
     };
 
     saveContacts([...contacts, newContact]);
     setNewName("");
     setNewPhone("");
     setNewRelationship("");
+    setNewNotifyVia("both");
     setModalVisible(false);
   };
 
@@ -121,6 +134,7 @@ export function ContactsScreen() {
           </Text>
           <Text style={styles.contactRelation}>{item.relationship}</Text>
           <Text style={styles.contactPhone}>{item.phone}</Text>
+          <Text style={styles.notifyBadge}>{getNotifyLabel(item.notifyVia)}</Text>
         </View>
       </View>
       <View style={styles.contactActions}>
@@ -206,6 +220,28 @@ export function ContactsScreen() {
               value={newRelationship}
               onChangeText={setNewRelationship}
             />
+            <Text style={styles.notifyLabel}>Notify via:</Text>
+            <View style={styles.notifyRow}>
+              {(["sms", "whatsapp", "both"] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.notifyChip,
+                    newNotifyVia === option && styles.notifyChipActive,
+                  ]}
+                  onPress={() => setNewNotifyVia(option)}
+                >
+                  <Text
+                    style={[
+                      styles.notifyChipText,
+                      newNotifyVia === option && styles.notifyChipTextActive,
+                    ]}
+                  >
+                    {getNotifyLabel(option)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalCancel}
@@ -322,6 +358,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  notifyBadge: {
+    fontSize: 11,
+    color: colors.primary,
+    marginTop: 4,
+    fontWeight: "600",
+  },
   contactActions: {
     alignItems: "flex-end",
     gap: spacing.xs,
@@ -421,6 +463,39 @@ const styles = StyleSheet.create({
   modalSaveText: {
     fontSize: 16,
     fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  notifyLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  notifyRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  notifyChip: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  notifyChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  notifyChipText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: colors.textSecondary,
+  },
+  notifyChipTextActive: {
     color: colors.textPrimary,
   },
 });
