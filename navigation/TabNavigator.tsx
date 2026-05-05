@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "@/components/HomeScreen";
 import { ContactsScreen } from "@/components/ContactsScreen";
 import { WalkScreen } from "@/components/WalkScreen";
+import { MapScreen } from "@/components/MapScreen";
 import { ProfileScreen } from "@/components/ProfileScreen";
 import { colors, borderRadius } from "@/theme";
 
@@ -11,6 +12,7 @@ export type TabParamList = {
 	Home: undefined;
 	Contacts: undefined;
 	Walk: undefined;
+	Map: undefined;
 	Profile: undefined;
 };
 
@@ -71,6 +73,15 @@ export function TabNavigator() {
 				options={{
 					tabBarIcon: ({ focused }) => (
 						<TabIcon name={focused ? "walk" : "walk-outline"} focused={focused} />
+					),
+				}}
+			/>
+			<Tab.Screen
+				name="Map"
+				component={MapScreen}
+				options={{
+					tabBarIcon: ({ focused }) => (
+						<TabIcon name={focused ? "map" : "map-outline"} focused={focused} />
 					),
 				}}
 			/>
