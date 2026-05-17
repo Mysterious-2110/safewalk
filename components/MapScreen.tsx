@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Alert, ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
 import * as Location from "expo-location";
 import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
@@ -17,28 +17,248 @@ interface Zone {
 	description: string;
 }
 
+interface EmergencyPlace {
+	lat: number;
+	lng: number;
+	name: string;
+	type: "hospital" | "police" | "fire_station" | "pharmacy";
+}
+
 const DEFAULT_RADIUS = 200;
+
+const PLACE_ICONS: Record<string, { icon: string; label: string; color: string }> = {
+	hospital: { icon: "H", label: "Hospital", color: "#EF4444" },
+	police: { icon: "P", label: "Police", color: "#3B82F6" },
+	fire_station: { icon: "F", label: "Fire Station", color: "#F97316" },
+	pharmacy: { icon: "💊", label: "Pharmacy", color: "#10B981" },
+};
+
+function buildMapHtml(
+	userLat: number,
+	userLng: number,
+	zones: Zone[],
+	places: EmergencyPlace[],
+): string {
+	const zonesJson = JSON.stringify(zones);
+	const placesJson = JSON.stringify(places);
+	const placeIconsJson = JSON.stringify(PLACE_ICONS);
+
+	return `<!DOCTYPE html>
+<html>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+	<style>
+		body { margin: 0; padding: 0; }
+		html, body, #map { height: 100%; width: 100%; }
+		.leaflet-control-attribution { display: none; }
+		.leaflet-control-zoom a { background: #1E293B !important; color: #fff !important; border: none !important; }
+		.leaflet-control-zoom { border: none !important; }
+
+		.user-pin {
+			width: 24px; height: 24px; border-radius: 50%;
+			background: #3B82F6; border: 3px solid #fff;
+			box-shadow: 0 0 12px rgba(59,130,246,0.6);
+		}
+		.user-pulse {
+			width: 48px; height: 48px; border-radius: 50%;
+			background: rgba(59,130,246,0.25); border: 2px solid rgba(59,130,246,0.4);
+			position: absolute; top: -12px; left: -12px;
+			animation: pulse 2s ease-in-out infinite;
+		}
+		@keyframes pulse {
+			0% { transform: scale(0.8); opacity: 0.6; }
+			50% { transform: scale(1.3); opacity: 0.2; }
+			100% { transform: scale(0.8); opacity: 0.6; }
+		}
+
+		.place-marker {
+			width: 36px; height: 36px; border-radius: 8px;
+			display: flex; align-items: center; justify-content: center;
+			font-size: 16px; font-weight: bold; color: #fff;
+			border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+			cursor: pointer;
+		}
+
+		.legend {
+			position: absolute; bottom: 100px; left: 16px; z-index: 1000;
+			background: rgba(15, 23, 42, 0.92);
+			padding: 10px 14px; border-radius: 10px;
+			color: #fff; font-size: 12px;
+			min-width: 150px;
+			backdrop-filter: blur(8px);
+			border: 1px solid rgba(255,255,255,0.08);
+		}
+		.legend-title {
+			font-size: 13px; font-weight: 700; margin-bottom: 6px;
+			color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;
+		}
+		.legend-section { margin-bottom: 6px; }
+		.legend-section-title {
+			font-size: 10px; font-weight: 600; color: #64748B;
+			text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;
+		}
+		.legend-item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+		.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+		.legend-place-marker {
+			width: 18px; height: 18px; border-radius: 4px;
+			display: flex; align-items: center; justify-content: center;
+			font-size: 10px; font-weight: bold; color: #fff; flex-shrink: 0;
+		}
+	</style>
+</head>
+<body>
+	<div id="map"></div>
+	<div class="legend">
+		<div class="legend-title">Map Legend</div>
+		<div class="legend-section">
+			<div class="legend-section-title">You</div>
+			<div class="legend-item"><div class="legend-dot" style="background:#3B82F6;box-shadow:0 0 6px rgba(59,130,246,0.6)"></div>Your Location</div>
+		</div>
+		<div class="legend-section">
+			<div class="legend-section-title">Emergency Services</div>
+			<div class="legend-item"><div class="legend-place-marker" style="background:#EF4444">H</div>Hospital</div>
+			<div class="legend-item"><div class="legend-place-marker" style="background:#3B82F6">P</div>Police</div>
+			<div class="legend-item"><div class="legend-place-marker" style="background:#F97316">F</div>Fire Station</div>
+			<div class="legend-item"><div class="legend-place-marker" style="background:#10B981">💊</div>Pharmacy</div>
+		</div>
+		<div class="legend-section">
+			<div class="legend-section-title">Danger Zones</div>
+			<div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div>Critical</div>
+			<div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div>Moderate</div>
+		</div>
+	</div>
+	<script>
+		const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([${userLat}, ${userLng}], 14);
+		L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+			maxZoom: 19
+		}).addTo(map);
+
+		const userIcon = L.divIcon({
+			className: '',
+			html: '<div class="user-pulse"></div><div class="user-pin"></div>',
+			iconSize: [24, 24],
+			iconAnchor: [12, 12],
+		});
+		L.marker([${userLat}, ${userLng}], { icon: userIcon, zIndexOffset: 1000 })
+			.addTo(map)
+			.bindPopup('<b>You are here</b><br>Current location');
+
+		const placeIcons = ${placeIconsJson};
+		const places = ${placesJson};
+		places.forEach((p) => {
+			const cfg = placeIcons[p.type] || { icon: '?', label: 'Unknown', color: '#666' };
+			const icon = L.divIcon({
+				className: '',
+				html: '<div class="place-marker" style="background:' + cfg.color + '">' + cfg.icon + '</div>',
+				iconSize: [36, 36],
+				iconAnchor: [18, 18],
+			});
+			const marker = L.marker([p.lat, p.lng], { icon: icon })
+				.addTo(map)
+				.bindPopup('<b>' + cfg.label + '</b><br>' + (p.name || 'Unknown'));
+		});
+
+		const zones = ${zonesJson};
+		const circleMarkers = [];
+		zones.forEach((z) => {
+			const color = z.type === 'critical' ? '#EF4444' : '#F59E0B';
+			const circle = L.circle([z.lat, z.lng], {
+				radius: z.radius, color: color,
+				fillColor: color, fillOpacity: 0.3, weight: 2
+			}).addTo(map);
+			circle.bindPopup('<b>' + z.type.toUpperCase() + '</b><br>' + (z.description || 'No description'));
+			circleMarkers.push(circle);
+		});
+
+		map.on('contextmenu', (e) => {
+			window.ReactNativeWebView.postMessage(JSON.stringify({
+				type: 'longPress', lat: e.latlng.lat, lng: e.latlng.lng
+			}));
+		});
+
+		let touchStartTime;
+		map.on('touchstart', () => { touchStartTime = Date.now(); });
+		map.on('touchend', (e) => {
+			if (Date.now() - touchStartTime > 600) {
+				window.ReactNativeWebView.postMessage(JSON.stringify({
+					type: 'longPress', lat: e.latlng.lat, lng: e.latlng.lng
+				}));
+			}
+		});
+
+		window.updateUserLocation = function(lat, lng) {
+			map.setView([lat, lng], map.getZoom());
+		};
+		window.updateZones = function(newZones) {
+			circleMarkers.forEach(m => map.removeLayer(m));
+			circleMarkers.length = 0;
+			const parsed = JSON.parse(newZones);
+			parsed.forEach((z) => {
+				const color = z.type === 'critical' ? '#EF4444' : '#F59E0B';
+				const circle = L.circle([z.lat, z.lng], {
+					radius: z.radius, color: color,
+					fillColor: color, fillOpacity: 0.3, weight: 2
+				}).addTo(map);
+				circle.bindPopup('<b>' + z.type.toUpperCase() + '</b><br>' + (z.description || 'No description'));
+				circleMarkers.push(circle);
+			});
+		};
+	</script>
+</body>
+</html>`;
+}
+
+const PLACE_TYPES = [
+	{ amenity: "hospital", label: "Hospital" },
+	{ amenity: "police", label: "Police" },
+	{ amenity: "fire_station", label: "Fire Station" },
+	{ amenity: "pharmacy", label: "Pharmacy" },
+];
+
+async function fetchNearbyPlaces(lat: number, lng: number): Promise<EmergencyPlace[]> {
+	const queries = PLACE_TYPES.map(
+		(p) => `node["amenity"="${p.amenity}"](around:5000,${lat},${lng});`
+	).join("\n");
+	const overpassQuery = `[out:json];(${queries});out body;`;
+	const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+
+	const response = await fetch(url);
+	if (!response.ok) throw new Error("Overpass API request failed");
+
+	const data = await response.json();
+	return (data.elements || []).map((el: any) => ({
+		lat: el.lat,
+		lng: el.lon,
+		name: el.tags?.name || el.tags?.operator || `Unnamed ${el.tags?.amenity || "place"}`,
+		type: el.tags?.amenity as EmergencyPlace["type"],
+	}));
+}
 
 export function MapScreen() {
 	const webViewRef = useRef<WebView | null>(null);
 	const [mapHtml, setMapHtml] = useState("");
 	const [zones, setZones] = useState<Zone[]>([]);
+	const [places, setPlaces] = useState<EmergencyPlace[]>([]);
 	const [modalVisible, setModalVisible] = useState(false);
 	const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
 	const [selectedType, setSelectedType] = useState<ZoneType>("critical");
 	const [description, setDescription] = useState("");
 	const [userLat, setUserLat] = useState(20);
 	const [userLng, setUserLng] = useState(78);
+	const [placesLoading, setPlacesLoading] = useState(false);
+	const [placesError, setPlacesError] = useState<string | null>(null);
 
 	useEffect(() => {
 		loadZones();
 		getCurrentLocation();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	useEffect(() => {
-		buildMapHtml();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [zones, userLat, userLng]);
+		setMapHtml(buildMapHtml(userLat, userLng, zones, places));
+	}, [zones, places, userLat, userLng]);
 
 	const getCurrentLocation = async () => {
 		const { status } = await Location.requestForegroundPermissionsAsync();
@@ -47,9 +267,28 @@ export function MapScreen() {
 			const loc = await Location.getCurrentPositionAsync({});
 			setUserLat(loc.coords.latitude);
 			setUserLng(loc.coords.longitude);
+			loadPlaces(loc.coords.latitude, loc.coords.longitude);
 		} catch (error) {
 			console.error("Failed to get location:", error);
 		}
+	};
+
+	const loadPlaces = useCallback(async (lat: number, lng: number) => {
+		setPlacesLoading(true);
+		setPlacesError(null);
+		try {
+			const results = await fetchNearbyPlaces(lat, lng);
+			setPlaces(results);
+		} catch (error: any) {
+			console.error("Failed to fetch nearby places:", error);
+			setPlacesError("Could not load emergency services");
+		} finally {
+			setPlacesLoading(false);
+		}
+	}, []);
+
+	const handleRefreshPlaces = () => {
+		loadPlaces(userLat, userLng);
 	};
 
 	const loadZones = async () => {
@@ -64,109 +303,6 @@ export function MapScreen() {
 		} catch (error) {
 			console.error("Failed to load zones:", error);
 		}
-	};
-
-	const buildMapHtml = () => {
-		const zonesJson = JSON.stringify(zones);
-		const html = `
-<!DOCTYPE html>
-<html>
-<head>
-	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-	<style>
-		body { margin: 0; padding: 0; }
-		html, body, #map { height: 100%; width: 100%; }
-		.leaflet-control-attribution { display: none; }
-		.leaflet-control-zoom a { background: #1E293B !important; color: #fff !important; border: none !important; }
-		.legend {
-			position: absolute; bottom: 100px; left: 16px; z-index: 1000;
-			background: rgba(30, 41, 59, 0.9); padding: 8px 12px;
-			border-radius: 8px; color: #fff; font-size: 13px;
-		}
-		.legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-		.legend-dot { width: 12px; height: 12px; border-radius: 6px; }
-	</style>
-</head>
-<body>
-	<div id="map"></div>
-	<div class="legend">
-		<div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div>Critical</div>
-		<div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div>Moderate</div>
-	</div>
-	<script>
-		const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([${userLat}, ${userLng}], 14);
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-			maxZoom: 19
-		}).addTo(map);
-
-		const zones = ${zonesJson};
-		const circleMarkers = [];
-
-		zones.forEach((z) => {
-			const color = z.type === 'critical' ? '#EF4444' : '#F59E0B';
-			const circle = L.circle([z.lat, z.lng], {
-				radius: z.radius,
-				color: color,
-				fillColor: color,
-				fillOpacity: 0.3,
-				weight: 2
-			}).addTo(map);
-			circle.bindPopup('<b>' + z.type.toUpperCase() + '</b><br>' + (z.description || 'No description'));
-			circleMarkers.push(circle);
-		});
-
-		map.on('contextmenu', (e) => {
-			window.ReactNativeWebView.postMessage(JSON.stringify({
-				type: 'longPress',
-				lat: e.latlng.lat,
-				lng: e.latlng.lng
-			}));
-		});
-
-		let touchStartTime;
-		let touchStartPos;
-		map.on('touchstart', (e) => {
-			touchStartTime = Date.now();
-			touchStartPos = e.containerPoint;
-		});
-		map.on('touchend', (e) => {
-			const duration = Date.now() - touchStartTime;
-			if (duration > 600) {
-				window.ReactNativeWebView.postMessage(JSON.stringify({
-					type: 'longPress',
-					lat: e.latlng.lat,
-					lng: e.latlng.lng
-				}));
-			}
-		});
-
-		window.updateUserLocation = function(lat, lng) {
-			map.setView([lat, lng], map.getZoom());
-		};
-
-		window.updateZones = function(newZones) {
-			circleMarkers.forEach(m => map.removeLayer(m));
-			circleMarkers.length = 0;
-			const parsed = JSON.parse(newZones);
-			parsed.forEach((z) => {
-				const color = z.type === 'critical' ? '#EF4444' : '#F59E0B';
-				const circle = L.circle([z.lat, z.lng], {
-					radius: z.radius,
-					color: color,
-					fillColor: color,
-					fillOpacity: 0.3,
-					weight: 2
-				}).addTo(map);
-				circle.bindPopup('<b>' + z.type.toUpperCase() + '</b><br>' + (z.description || 'No description'));
-				circleMarkers.push(circle);
-			});
-		};
-	</script>
-</body>
-</html>`;
-		setMapHtml(html);
 	};
 
 	const handleMessage = (event: any) => {
@@ -209,6 +345,8 @@ export function MapScreen() {
 		}
 	};
 
+	const placeCount = places.length;
+
 	return (
 		<View style={styles.container}>
 			{mapHtml ? (
@@ -222,8 +360,37 @@ export function MapScreen() {
 			) : null}
 
 			<View style={styles.header}>
-				<Text style={styles.title}>Safety Map</Text>
-				<Text style={styles.subtitle}>Long-press to report a danger zone</Text>
+				<View style={styles.headerTop}>
+					<View style={styles.headerText}>
+						<Text style={styles.title}>Safety Map</Text>
+						<Text style={styles.subtitle}>Long-press to report a danger zone</Text>
+					</View>
+					<TouchableOpacity
+						style={styles.refreshBtn}
+						onPress={handleRefreshPlaces}
+						disabled={placesLoading}
+					>
+						<Text style={styles.refreshBtnText}>{placesLoading ? "..." : "⟳"}</Text>
+					</TouchableOpacity>
+				</View>
+				<View style={styles.placeBar}>
+					{placesLoading ? (
+						<View style={styles.placeBarLoading}>
+							<ActivityIndicator size="small" color={colors.primary} />
+							<Text style={styles.placeBarText}>Loading nearby services...</Text>
+						</View>
+					) : placesError ? (
+						<Text style={styles.placeBarError}>{placesError}</Text>
+					) : (
+						<View style={styles.placeBarRow}>
+							<Text style={styles.placeBarText}>
+								{placeCount > 0
+									? `${placeCount} emergency ${placeCount === 1 ? "service" : "services"} near you`
+									: "No emergency services found nearby"}
+							</Text>
+						</View>
+					)}
+				</View>
 			</View>
 
 			<Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
@@ -284,9 +451,17 @@ const styles = StyleSheet.create({
 		top: 60,
 		left: spacing.md,
 		right: spacing.md,
+		zIndex: 10,
+	},
+	headerTop: {
+		flexDirection: "row",
 		backgroundColor: "rgba(15, 23, 42, 0.9)",
 		borderRadius: borderRadius.lg,
 		padding: spacing.md,
+		alignItems: "center",
+	},
+	headerText: {
+		flex: 1,
 	},
 	title: {
 		fontSize: 22,
@@ -297,6 +472,44 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		color: colors.textSecondary,
 		marginTop: spacing.xs,
+	},
+	refreshBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: colors.card,
+		borderWidth: 1,
+		borderColor: colors.border,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	refreshBtnText: {
+		fontSize: 20,
+		color: colors.primary,
+	},
+	placeBar: {
+		marginTop: spacing.xs,
+		backgroundColor: "rgba(15, 23, 42, 0.85)",
+		borderRadius: borderRadius.md,
+		padding: spacing.sm,
+	},
+	placeBarLoading: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.sm,
+	},
+	placeBarText: {
+		fontSize: 12,
+		color: colors.textSecondary,
+	},
+	placeBarError: {
+		fontSize: 12,
+		color: colors.primary,
+	},
+	placeBarRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.xs,
 	},
 	modalOverlay: {
 		flex: 1,
