@@ -73,10 +73,10 @@ function buildMapHtml(
 		}
 
 		.place-marker {
-			width: 36px; height: 36px; border-radius: 8px;
+			width: 28px; height: 28px; border-radius: 6px;
 			display: flex; align-items: center; justify-content: center;
-			font-size: 16px; font-weight: bold; color: #fff;
-			border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+			font-size: 14px; font-weight: bold; color: #fff;
+			border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 			cursor: pointer;
 		}
 
@@ -150,8 +150,8 @@ function buildMapHtml(
 			const icon = L.divIcon({
 				className: '',
 				html: '<div class="place-marker" style="background:' + cfg.color + '">' + cfg.icon + '</div>',
-				iconSize: [36, 36],
-				iconAnchor: [18, 18],
+				iconSize: [28, 28],
+				iconAnchor: [14, 14],
 			});
 			const marker = L.marker([p.lat, p.lng], { icon: icon })
 				.addTo(map)
