@@ -216,11 +216,11 @@ const PLACE_TYPES = [
 
 async function fetchNearbyPlaces(lat: number, lng: number): Promise<EmergencyPlace[]> {
 	const overpassQuery = `[out:json];(${PLACE_TYPES.map(
-		(p) => `node["amenity"="${p.amenity}"](around:5000,${lat},${lng});`
-	).join("")});out body;`;
+		(p) => `node["amenity"="${p.amenity}"](around:8000,${lat},${lng});way["amenity"="${p.amenity}"](around:8000,${lat},${lng});`
+	).join("")});out center;`;
 
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 15000);
+	const timeout = setTimeout(() => controller.abort(), 20000);
 
 	try {
 		const response = await fetch("https://overpass-api.de/api/interpreter", {
@@ -246,12 +246,11 @@ async function fetchNearbyPlaces(lat: number, lng: number): Promise<EmergencyPla
 			return [];
 		}
 
-		return data.elements.map((el: any) => ({
-			lat: el.lat,
-			lng: el.lon,
-			name: el.tags?.name || el.tags?.operator || `Unnamed ${el.tags?.amenity || "place"}`,
-			type: el.tags?.amenity as EmergencyPlace["type"],
-		}));
+		return data.elements.map((el: any) => {
+			const lat = el.lat ?? el.center?.lat;
+			const lng = el.lon ?? el.center?.lon;
+			return { lat, lng, name: el.tags?.name || el.tags?.operator || `Unnamed ${el.tags?.amenity || "place"}`, type: el.tags?.amenity as EmergencyPlace["type"] };
+		}).filter((p: EmergencyPlace) => p.lat != null && p.lng != null);
 	} catch (error: any) {
 		clearTimeout(timeout);
 		if (error.name === "AbortError") {
