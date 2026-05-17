@@ -218,22 +218,50 @@ const PLACE_TYPES = [
 ];
 
 async function fetchNearbyPlaces(lat: number, lng: number): Promise<EmergencyPlace[]> {
-	const queries = PLACE_TYPES.map(
+	const overpassQuery = `[out:json];(${PLACE_TYPES.map(
 		(p) => `node["amenity"="${p.amenity}"](around:5000,${lat},${lng});`
-	).join("\n");
-	const overpassQuery = `[out:json];(${queries});out body;`;
-	const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+	).join("")});out body;`;
 
-	const response = await fetch(url);
-	if (!response.ok) throw new Error("Overpass API request failed");
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 15000);
 
-	const data = await response.json();
-	return (data.elements || []).map((el: any) => ({
-		lat: el.lat,
-		lng: el.lon,
-		name: el.tags?.name || el.tags?.operator || `Unnamed ${el.tags?.amenity || "place"}`,
-		type: el.tags?.amenity as EmergencyPlace["type"],
-	}));
+	try {
+		const response = await fetch("https://overpass-api.de/api/interpreter", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				"User-Agent": "SafeWalk/1.0 (community map feature)",
+				"Accept": "application/json",
+			},
+			body: `data=${encodeURIComponent(overpassQuery)}`,
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeout);
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			throw new Error(`Overpass API returned ${response.status}: ${text.slice(0, 200)}`);
+		}
+
+		const data = await response.json();
+		if (!data || !Array.isArray(data.elements)) {
+			return [];
+		}
+
+		return data.elements.map((el: any) => ({
+			lat: el.lat,
+			lng: el.lon,
+			name: el.tags?.name || el.tags?.operator || `Unnamed ${el.tags?.amenity || "place"}`,
+			type: el.tags?.amenity as EmergencyPlace["type"],
+		}));
+	} catch (error: any) {
+		clearTimeout(timeout);
+		if (error.name === "AbortError") {
+			throw new Error("Request timed out");
+		}
+		throw error;
+	}
 }
 
 export function MapScreen() {
