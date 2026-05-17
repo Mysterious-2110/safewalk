@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
 import * as Location from "expo-location";
-import { collection, addDoc, query, getDocs, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { colors, spacing, borderRadius } from "@/theme";
 
@@ -37,6 +37,7 @@ export function MapScreen() {
 
 	useEffect(() => {
 		buildMapHtml();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [zones, userLat, userLng]);
 
 	const getCurrentLocation = async () => {

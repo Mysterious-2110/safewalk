@@ -61,6 +61,12 @@ app.post("/send-sos", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
-});
+
+// Only start the server when this file is run directly (not imported by tests)
+if (require.main === module) {
+	app.listen(PORT, () => {
+		console.log(`Server running on port ${PORT}`);
+	});
+}
+
+module.exports = app;

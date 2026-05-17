@@ -3,9 +3,9 @@ import * as Linking from "expo-linking";
 import { useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { doc, setDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { auth } from "@/lib/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { haversineDistance, formatDuration, formatDistance } from "@/lib/utils";
 import { colors, spacing, borderRadius } from "@/theme";
 
 interface Contact {
@@ -34,30 +34,10 @@ export function WalkScreen() {
 		return () => {
 			stopTracking();
 		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-		const R = 6371e3;
-		const φ1 = (lat1 * Math.PI) / 180;
-		const φ2 = (lat2 * Math.PI) / 180;
-		const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-		const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-		const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-		return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-	};
 
-	const formatDuration = (seconds: number) => {
-		const h = Math.floor(seconds / 3600);
-		const m = Math.floor((seconds % 3600) / 60);
-		const s = seconds % 60;
-		if (h > 0) return `${h}h ${m}m`;
-		return `${m}m ${s}s`;
-	};
-
-	const formatDistance = (meters: number) => {
-		if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
-		return `${Math.round(meters)} m`;
-	};
 
 	const startTracking = async () => {
 		const { status } = await Location.requestForegroundPermissionsAsync();
@@ -150,7 +130,7 @@ export function WalkScreen() {
 
 		if (smsContacts.length > 0) {
 			try {
-				await fetch("https://fizzier-lizeth-unfilially.ngrok-free.dev/send-sos", {
+				await fetch("https://2a21-14-139-110-190.ngrok-free.app/send-sos", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -211,7 +191,7 @@ export function WalkScreen() {
 			<View style={styles.infoCard}>
 				<Text style={styles.infoTitle}>Share Your Journey</Text>
 				<Text style={styles.infoText}>
-					Start tracking to share your live location with your emergency contacts. They'll receive a link to follow your walk in real-time.
+					Start tracking to share your live location with your emergency contacts. 					They&apos;ll receive a link to follow your walk in real-time.
 				</Text>
 			</View>
 

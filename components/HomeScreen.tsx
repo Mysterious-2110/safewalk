@@ -79,7 +79,7 @@ export function HomeScreen() {
 					lng: loc.coords.longitude,
 					contacts: smsContacts.map((c) => c.phone),
 				};
-				const response = await fetch("https://fizzier-lizeth-unfilially.ngrok-free.dev/send-sos", {
+				const response = await fetch("https://2a21-14-139-110-190.ngrok-free.app/send-sos", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload),
