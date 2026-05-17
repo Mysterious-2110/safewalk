@@ -27,7 +27,7 @@ interface EmergencyPlace {
 const DEFAULT_RADIUS = 200;
 
 const PLACE_ICONS: Record<string, { icon: string; label: string; color: string }> = {
-	police: { icon: "P", label: "Police", color: "#3B82F6" },
+	police: { icon: "🚓", label: "Police", color: "#3B82F6" },
 	fire_station: { icon: "F", label: "Fire Station", color: "#F97316" },
 	pharmacy: { icon: "💊", label: "Pharmacy", color: "#10B981" },
 };
@@ -117,7 +117,7 @@ function buildMapHtml(
 		</div>
 		<div class="legend-section">
 			<div class="legend-section-title">Emergency Services</div>
-			<div class="legend-item"><div class="legend-place-marker" style="background:#3B82F6">P</div>Police</div>
+			<div class="legend-item"><div class="legend-place-marker" style="background:#3B82F6">🚓</div>Police</div>
 			<div class="legend-item"><div class="legend-place-marker" style="background:#F97316">F</div>Fire Station</div>
 			<div class="legend-item"><div class="legend-place-marker" style="background:#10B981">💊</div>Pharmacy</div>
 		</div>
